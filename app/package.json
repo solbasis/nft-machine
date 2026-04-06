@@ -1,0 +1,25 @@
+{
+  "name": "nft-machine-app",
+  "version": "1.0.0",
+  "description": "Solana Skills-compliant NFT deployer — Token-2022, @solana/kit, Wallet Standard",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5175",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@solana/kit": "^2.1.0",
+    "@wallet-standard/app": "^1.1.0",
+    "@wallet-standard/base": "^1.0.1",
+    "@wallet-standard/features": "^1.0.3",
+    "@irys/web-upload": "^0.0.15",
+    "@irys/web-upload-solana": "^0.1.8",
+    "@noble/hashes": "^1.6.0",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "vite-plugin-node-polyfills": "^0.22.0"
+  }
+}
