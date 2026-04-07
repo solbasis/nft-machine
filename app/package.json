@@ -7,7 +7,7 @@
     "dev": "vite --port 5175",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "vite build && gh-pages -d dist -r https://github.com/BULLCEMBER/nft-machine.git"
+    "deploy": "vite build && gh-pages -d dist -r https://github.com/solbasis/nft-machine.git"
   },
   "dependencies": {
     "@irys/web-upload": "^0.0.15",
