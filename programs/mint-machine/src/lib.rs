@@ -6,7 +6,8 @@ pub mod instructions;
 
 use instructions::*;
 
-declare_id!("MintMach1neXXXXXXXXXXXXXXXXXXXXXXXXXXXXX1");
+// Placeholder — run `anchor build` then `anchor keys sync` to replace with real ID.
+declare_id!("11111111111111111111111111111112");
 
 #[program]
 pub mod mint_machine {

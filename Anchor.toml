@@ -6,11 +6,12 @@ solana_version = "2.1.0"
 resolution = true
 skip-lint = false
 
+# Placeholder — update after `anchor build && anchor keys sync`
 [programs.localnet]
-mint_machine = "MintMach1neXXXXXXXXXXXXXXXXXXXXXXXXXXXXX1"
+mint_machine = "11111111111111111111111111111112"
 
 [programs.devnet]
-mint_machine = "MintMach1neXXXXXXXXXXXXXXXXXXXXXXXXXXXXX1"
+mint_machine = "11111111111111111111111111111112"
 
 [registry]
 url = "https://api.apr.dev"

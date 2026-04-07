@@ -35,10 +35,10 @@ impl MintCount {
     pub const LEN: usize = 8 + 32 + 32 + 2 + 1; // 75 bytes
 }
 
-/// Whitelist config (optional phase before public).
+/// Whitelist config — always present in the account (zeroed merkle_root = no WL).
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default)]
 pub struct WhitelistConfig {
-    /// keccak256 Merkle root of allowed wallets (32 bytes, zeroed = no WL).
+    /// keccak256 Merkle root of allowed wallets. All-zeros = whitelist disabled.
     pub merkle_root: [u8; 32],
     /// Price in lamports during WL phase (0 = free).
     pub price_lamports: u64,
@@ -50,6 +50,11 @@ pub struct WhitelistConfig {
     pub end_ts: i64,
 }
 
+impl WhitelistConfig {
+    /// Borsh-encoded size: 32 + 8 + 2 + 8 + 8 = 58 bytes.
+    pub const SIZE: usize = 32 + 8 + 2 + 8 + 8;
+}
+
 /// The main mint machine account. PDA seeds: ["machine", authority, machine_id].
 #[account]
 pub struct MintMachine {
@@ -57,11 +62,11 @@ pub struct MintMachine {
     pub authority: Pubkey,
     /// Where mint proceeds go.
     pub treasury: Pubkey,
-    /// Human-readable machine ID (≤32 bytes, UTF-8).
+    /// Human-readable machine ID (≤32 bytes, UTF-8, null-padded).
     pub machine_id: [u8; 32],
-    /// Collection name shown in metadata (≤64 bytes).
+    /// Collection name shown in metadata (≤64 bytes, null-padded).
     pub name: [u8; 64],
-    /// Collection-level metadata URI (≤200 bytes).
+    /// Collection-level metadata URI (≤200 bytes, null-padded).
     pub collection_uri: [u8; 200],
     /// Total items in this machine.
     pub total_items: u32,
@@ -77,34 +82,41 @@ pub struct MintMachine {
     pub start_ts: i64,
     /// Whether the machine is paused.
     pub paused: bool,
-    /// Optional whitelist phase config.
-    pub whitelist: Option<WhitelistConfig>,
+    /// Whitelist config — always present. Zeroed merkle_root means no whitelist.
+    pub whitelist: WhitelistConfig,
     /// PDA bump.
     pub bump: u8,
 }
 
 impl MintMachine {
-    /// Base account size (without the dynamic items vec — stored via realloc).
-    pub const BASE_LEN: usize =
-        8           // discriminator
-        + 32        // authority
-        + 32        // treasury
-        + 32        // machine_id
-        + 64        // name
-        + 200       // collection_uri
-        + 4         // total_items
-        + 4         // items_loaded
-        + 4         // items_minted
-        + 8         // price_lamports
-        + 2         // mint_limit
-        + 8         // start_ts
-        + 1         // paused
-        + 1         // Option discriminant for whitelist
-        + 32 + 8 + 2 + 8 + 8  // WhitelistConfig fields (58 bytes)
-        + 1         // bump
-        + 4;        // Vec<ItemData> length prefix
+    /// Fixed base account size.
+    /// Layout (Borsh):
+    ///   8  discriminator
+    ///  32  authority
+    ///  32  treasury
+    ///  32  machine_id
+    ///  64  name
+    /// 200  collection_uri
+    ///   4  total_items
+    ///   4  items_loaded
+    ///   4  items_minted
+    ///   8  price_lamports
+    ///   2  mint_limit
+    ///   8  start_ts
+    ///   1  paused
+    ///  58  whitelist (WhitelistConfig::SIZE)
+    ///   1  bump
+    /// ───
+    /// 458  struct end
+    ///   4  items vec length prefix (manually managed)
+    /// ───
+    /// 462  BASE_LEN
+    pub const BASE_LEN: usize = 8 + 32 + 32 + 32 + 64 + 200 + 4 + 4 + 4 + 8 + 2 + 8 + 1
+        + WhitelistConfig::SIZE
+        + 1
+        + 4; // 462
 
-    /// Total space needed for N items.
+    /// Total space needed to hold N items in trailing raw storage.
     pub fn space_for(n: u32) -> usize {
         Self::BASE_LEN + (n as usize) * ItemData::SIZE
     }
@@ -115,13 +127,10 @@ impl MintMachine {
     }
 
     pub fn is_wl_active(&self, now: i64) -> bool {
-        if let Some(wl) = &self.whitelist {
-            if wl.merkle_root == [0u8; 32] { return false; }
-            let started = wl.start_ts == 0 || now >= wl.start_ts;
-            let not_ended = wl.end_ts == 0 || now < wl.end_ts;
-            started && not_ended
-        } else {
-            false
-        }
+        let wl = &self.whitelist;
+        if wl.merkle_root == [0u8; 32] { return false; }
+        let started = wl.start_ts == 0 || now >= wl.start_ts;
+        let not_ended = wl.end_ts == 0 || now < wl.end_ts;
+        started && not_ended
     }
 }

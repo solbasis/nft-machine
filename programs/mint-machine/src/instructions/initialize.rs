@@ -12,6 +12,7 @@ pub struct InitializeArgs {
     pub mint_limit: u16,
     pub start_ts: i64,
     pub treasury: Pubkey,
+    /// If None, whitelist is disabled (zeroed merkle_root stored).
     pub whitelist: Option<WhitelistConfigArgs>,
 }
 
@@ -60,7 +61,6 @@ pub fn handler(ctx: Context<Initialize>, args: InitializeArgs) -> Result<()> {
     machine.start_ts = args.start_ts;
     machine.paused = false;
 
-    // Copy fixed-size fields
     let mut id_bytes = [0u8; 32];
     id_bytes[..args.machine_id.len()].copy_from_slice(args.machine_id.as_bytes());
     machine.machine_id = id_bytes;
@@ -73,14 +73,18 @@ pub fn handler(ctx: Context<Initialize>, args: InitializeArgs) -> Result<()> {
     uri_bytes[..args.collection_uri.len()].copy_from_slice(args.collection_uri.as_bytes());
     machine.collection_uri = uri_bytes;
 
-    // Whitelist config
-    machine.whitelist = args.whitelist.map(|wl| WhitelistConfig {
-        merkle_root: wl.merkle_root,
-        price_lamports: wl.price_lamports,
-        mint_limit: wl.mint_limit,
-        start_ts: wl.start_ts,
-        end_ts: wl.end_ts,
-    });
+    // WhitelistConfig is always stored — None args → zeroed struct (= disabled).
+    machine.whitelist = if let Some(wl) = args.whitelist {
+        WhitelistConfig {
+            merkle_root: wl.merkle_root,
+            price_lamports: wl.price_lamports,
+            mint_limit: wl.mint_limit,
+            start_ts: wl.start_ts,
+            end_ts: wl.end_ts,
+        }
+    } else {
+        WhitelistConfig::default()
+    };
 
     msg!("MintMachine initialized: {} ({} items)", args.machine_id, args.total_items);
     Ok(())

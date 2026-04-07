@@ -34,67 +34,67 @@ pub struct AddItems<'info> {
 pub fn handler(ctx: Context<AddItems>, args: AddItemsArgs) -> Result<()> {
     require!(!args.items.is_empty(), MintMachineError::NoItems);
 
-    let machine = &mut ctx.accounts.machine;
-    let new_count = machine.items_loaded
+    // Read current counts before any borrows
+    let items_loaded = ctx.accounts.machine.items_loaded;
+    let total_items  = ctx.accounts.machine.total_items;
+
+    let new_count = items_loaded
         .checked_add(args.items.len() as u32)
         .ok_or(MintMachineError::Overflow)?;
+    require!(new_count <= total_items, MintMachineError::ExceedsSupply);
 
-    require!(new_count <= machine.total_items, MintMachineError::ExceedsSupply);
-
+    // Validate all items first
     for item in &args.items {
-        require!(item.name.len() <= 64, MintMachineError::NameTooLong);
-        require!(item.uri.len() <= 200, MintMachineError::UriTooLong);
+        require!(item.name.len() <= 64,  MintMachineError::NameTooLong);
+        require!(item.uri.len()  <= 200, MintMachineError::UriTooLong);
+    }
 
+    // Write items into trailing raw storage — separate from the struct update below
+    for (i, item) in args.items.iter().enumerate() {
         let mut name_bytes = [0u8; 64];
         name_bytes[..item.name.len()].copy_from_slice(item.name.as_bytes());
 
         let mut uri_bytes = [0u8; 200];
         uri_bytes[..item.uri.len()].copy_from_slice(item.uri.as_bytes());
 
-        // Append to the machine's item list stored in trailing account data.
-        // We use a raw data append approach via account_info loader.
+        let idx = items_loaded + i as u32;
         append_item(
             &ctx.accounts.machine.to_account_info(),
             ItemData { name: name_bytes, uri: uri_bytes },
-            machine.items_loaded,
+            idx,
         )?;
-
-        machine.items_loaded = machine.items_loaded
-            .checked_add(1)
-            .ok_or(MintMachineError::Overflow)?;
     }
 
-    msg!("Added {} items, total loaded: {}/{}", args.items.len(), machine.items_loaded, machine.total_items);
+    // Update struct field — Anchor serialises this at end of instruction
+    ctx.accounts.machine.items_loaded = new_count;
+
+    msg!(
+        "Added {} items, total loaded: {}/{}",
+        args.items.len(), new_count, total_items
+    );
     Ok(())
 }
 
-/// Write an ItemData at index `idx` into the trailing data of `machine_info`.
-/// Layout after MintMachine::BASE_LEN - 4 bytes (vec length prefix is part of base):
-///   [vec_len: u32][ItemData * n]
+/// Write an ItemData at index `idx` into the trailing raw storage of the machine account.
+///
+/// Storage layout (after Anchor struct bytes end at BASE_LEN - 4):
+///   [vec_len: u32 LE][ItemData * n]
+///
+/// BASE_LEN already includes the 4-byte vec_len prefix, so items start at BASE_LEN.
 fn append_item(machine_info: &AccountInfo, item: ItemData, idx: u32) -> Result<()> {
     let mut data = machine_info.try_borrow_mut_data()?;
-    let base = MintMachine::BASE_LEN - 4; // offset to vec length prefix
-    let vec_len_offset = base;
-    let items_offset = vec_len_offset + 4;
 
-    // Update vec length
+    let vec_len_offset = MintMachine::BASE_LEN - 4;
+    let items_start    = MintMachine::BASE_LEN;
+
+    // Update vec length prefix
     let new_len = idx + 1;
     data[vec_len_offset..vec_len_offset + 4].copy_from_slice(&new_len.to_le_bytes());
 
-    // Write item
-    let item_offset = items_offset + (idx as usize) * ItemData::SIZE;
-    let bytes = bytemuck_item(&item);
-    data[item_offset..item_offset + ItemData::SIZE].copy_from_slice(bytes);
+    // Write item bytes directly — ItemData is all [u8; N] with no padding
+    let item_offset = items_start + (idx as usize) * ItemData::SIZE;
+    data[item_offset..item_offset + 64].copy_from_slice(&item.name);
+    data[item_offset + 64..item_offset + ItemData::SIZE].copy_from_slice(&item.uri);
 
     Ok(())
-}
-
-fn bytemuck_item(item: &ItemData) -> &[u8] {
-    // Safe: ItemData is Copy + no padding (u8 arrays)
-    unsafe {
-        std::slice::from_raw_parts(
-            item as *const ItemData as *const u8,
-            ItemData::SIZE,
-        )
-    }
 }
